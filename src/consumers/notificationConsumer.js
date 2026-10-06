@@ -1,6 +1,5 @@
 function parseMessageEnvelope(msg) {
   const content = JSON.parse(msg.content.toString());
-  
   const payload = content.data || content;
   const metadata = {
     eventId: content.eventId || 'N/A',
@@ -9,6 +8,22 @@ function parseMessageEnvelope(msg) {
   };
 
   return { payload, metadata };
+}
+
+async function startNotificationConsumers(channel) {
+  const exchangeName = 'cmd.direct';
+  await channel.assertExchange(exchangeName, 'direct', { durable: true });
+  const queueName = process.env.QUEUE_EMAIL || 'q.cmd.email';
+  await channel.assertQueue(queueName, { durable: true });
+  await channel.bindQueue(queueName, exchangeName, 'email.send');
+
+  channel.consume(queueName, (msg) => {
+    if (msg !== null) {
+      const content = JSON.parse(msg.content.toString());
+      console.log('[Notify] Mensaje recibido desde RabbitMQ:', content);
+      channel.ack(msg);
+    }
+  });
 }
 
 async function startNotificationConsumers(channel) {

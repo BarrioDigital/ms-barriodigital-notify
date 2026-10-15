@@ -27,15 +27,19 @@ async function startNotificationConsumers(channel) {
 }
 
 async function startNotificationConsumers(channel) {
+  const exchangeName = 'cmd.direct';
+  await channel.assertExchange(exchangeName, 'direct', { durable: true });
+
   const queues = [
-    { name: process.env.QUEUE_EMAIL || 'q.cmd.email', type: 'EMAIL / PUSH' },
-    { name: process.env.QUEUE_CREW || 'q.cmd.crew', type: 'TICKET CUADRILLA' },
-    { name: process.env.QUEUE_CERTIFICATE || 'q.cmd.certificate', type: 'CERTIFICADO' }
+    { name: process.env.QUEUE_EMAIL || 'q.cmd.email', routingKey: 'email.send', type: 'EMAIL / PUSH' },
+    { name: process.env.QUEUE_CREW || 'q.cmd.crew', routingKey: 'crew.assign', type: 'TICKET CUADRILLA' },
+    { name: process.env.QUEUE_CERTIFICATE || 'q.cmd.certificate', routingKey: 'certificate.issue', type: 'CERTIFICADO' }
   ];
 
   for (const q of queues) {
     await channel.assertQueue(q.name, { durable: true });
-    console.log(`[*] Escuchando colas de notificación en: ${q.name}`);
+    await channel.bindQueue(q.name, exchangeName, q.routingKey);
+    console.log(`[*] Escuchando cola ${q.name} con routing key [${q.routingKey}]`);
 
     channel.consume(q.name, (msg) => {
       if (msg !== null) {

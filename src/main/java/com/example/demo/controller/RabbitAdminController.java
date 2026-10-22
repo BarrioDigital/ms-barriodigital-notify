@@ -10,7 +10,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/queues")
-@CrossOrigin(origins = "*")
 public class RabbitAdminController {
 
     @Autowired

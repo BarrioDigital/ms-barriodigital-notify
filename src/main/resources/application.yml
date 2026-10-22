@@ -1,0 +1,36 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: ms-barriodigital-notify
+
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:barriodigital-rabbitmq}
+    port: 5672
+    username: guest
+    password: guest
+    listener:
+      simple:
+        acknowledge-mode: manual
+        retry:
+          enabled: false
+
+rabbitmq:
+  queues:
+    email: q.cmd.email
+    crew: q.cmd.crew
+    certificate: q.cmd.certificate
+  exchanges:
+    direct: cmd.direct
+    topic: cmd.topic
+    dlx: cmd.dead.dlx
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: always

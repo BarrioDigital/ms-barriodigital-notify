@@ -19,7 +19,7 @@ public class NotificationConsumers {
     public void consumeEmailMessage(String message, Channel channel, @Header(AmqpHeaders.DELIVERY_TAG) long tag) throws IOException {
         try {
             System.out.println("[ms-notify] [EMAIL] Procesando notificación: " + message);
-            if (message.contains("REJECT_TEST")) {
+            if (message != null && message.contains("REJECT_TEST")) {
                 throw new IllegalArgumentException("Error no recuperable forzado");
             }
             channel.basicAck(tag, false);
@@ -37,8 +37,14 @@ public class NotificationConsumers {
     public void consumeCrewMessage(String message, Channel channel, @Header(AmqpHeaders.DELIVERY_TAG) long tag) throws IOException {
         try {
             System.out.println("[ms-notify] [CREW] Generando ticket de visita: " + message);
+            if (message != null && message.contains("REJECT_TEST")) {
+                throw new IllegalArgumentException("Error no recuperable forzado");
+            }
             channel.basicAck(tag, false);
             System.out.println("[ms-notify] [CREW] ACK confirmado para tag: " + tag);
+        } catch (IllegalArgumentException e) {
+            System.err.println("[ms-notify] [CREW] Error no recuperable. Enviando a DLQ: " + e.getMessage());
+            channel.basicNack(tag, false, false);
         } catch (Exception e) {
             System.err.println("[ms-notify] [CREW] Error al procesar ticket. Enviando a DLQ: " + e.getMessage());
             channel.basicNack(tag, false, false);
@@ -49,8 +55,14 @@ public class NotificationConsumers {
     public void consumeCertificateMessage(String message, Channel channel, @Header(AmqpHeaders.DELIVERY_TAG) long tag) throws IOException {
         try {
             System.out.println("[ms-notify] [CERTIFICATE] Generando comprobante PDF: " + message);
+            if (message != null && message.contains("REJECT_TEST")) {
+                throw new IllegalArgumentException("Error no recuperable forzado");
+            }
             channel.basicAck(tag, false);
             System.out.println("[ms-notify] [CERTIFICATE] ACK confirmado para tag: " + tag);
+        } catch (IllegalArgumentException e) {
+            System.err.println("[ms-notify] [CERTIFICATE] Error no recuperable. Enviando a DLQ: " + e.getMessage());
+            channel.basicNack(tag, false, false);
         } catch (Exception e) {
             System.err.println("[ms-notify] [CERTIFICATE] Error procesando PDF. Enviando a DLQ: " + e.getMessage());
             channel.basicNack(tag, false, false);

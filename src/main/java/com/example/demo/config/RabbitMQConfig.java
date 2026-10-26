@@ -53,6 +53,8 @@ public class RabbitMQConfig {
         return QueueBuilder.durable(emailQueueName)
                 .withArgument("x-dead-letter-exchange", dlxExchangeName)
                 .withArgument("x-dead-letter-routing-key", "email.dead")
+                .withArgument("x-max-length", 1000)
+                .withArgument("x-message-ttl", 86400000)
                 .build();
     }
 
@@ -81,6 +83,8 @@ public class RabbitMQConfig {
         return QueueBuilder.durable(crewQueueName)
                 .withArgument("x-dead-letter-exchange", dlxExchangeName)
                 .withArgument("x-dead-letter-routing-key", "crew.dead")
+                .withArgument("x-max-length", 1000)
+                .withArgument("x-message-ttl", 86400000)
                 .build();
     }
 
@@ -109,6 +113,8 @@ public class RabbitMQConfig {
         return QueueBuilder.durable(certificateQueueName)
                 .withArgument("x-dead-letter-exchange", dlxExchangeName)
                 .withArgument("x-dead-letter-routing-key", "certificate.dead")
+                .withArgument("x-max-length", 1000)
+                .withArgument("x-message-ttl", 86400000)
                 .build();
     }
 

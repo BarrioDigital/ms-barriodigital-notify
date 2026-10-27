@@ -50,13 +50,18 @@ public class NotificationConsumers {
     @RabbitListener(queues = "${rabbitmq.queues.crew}")
     public void consumeCrewMessage(String message, Channel channel, @Header(AmqpHeaders.DELIVERY_TAG) long tag) throws IOException {
         try {
-            System.out.println("[ms-notify] [CREW] Generando ticket de visita: " + message);
+            System.out.println("[ms-notify] [CREW] Generando orden de trabajo en terreno: " + message);
             if (message != null && message.contains("REJECT_TEST")) {
                 throw new IllegalArgumentException("Error no recuperable forzado");
             }
+
+            // Guardar notificación del evento de asignación a cuadrilla en la base de datos
+            saveNotificationFromMessage(message);
+
             channel.basicAck(tag, false);
             System.out.println("[ms-notify] [CREW] ACK confirmado para tag: " + tag);
         } catch (Exception e) {
+            System.err.println("[ms-notify] [CREW] Error al procesar mensaje de cuadrilla: " + e.getMessage());
             channel.basicNack(tag, false, false);
         }
     }

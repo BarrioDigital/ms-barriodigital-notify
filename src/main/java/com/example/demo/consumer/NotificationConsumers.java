@@ -13,6 +13,10 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class NotificationConsumers {
@@ -21,10 +25,6 @@ public class NotificationConsumers {
     private NotificationRepository notificationRepository;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    // =======================================================
-    // CONSUMIDORES PRINCIPALES DE NOTIFICACIONES
-    // =======================================================
 
     @RabbitListener(queues = "${rabbitmq.queues.email}")
     public void consumeEmailMessage(String message, Channel channel, @Header(AmqpHeaders.DELIVERY_TAG) long tag) throws IOException {
@@ -42,7 +42,7 @@ public class NotificationConsumers {
             System.err.println("[ms-notify] [EMAIL] Error no recuperable. Enviando a DLQ: " + e.getMessage());
             channel.basicNack(tag, false, false);
         } catch (Exception e) {
-            System.err.println("[ms-notify] [EMAIL] Error recuperable. Rechazando mensaje: " + e.getMessage());
+            System.err.println("[ms-notify] [EMAIL] Error al guardar/procesar mensaje: " + e.getMessage());
             channel.basicNack(tag, false, false);
         }
     }
@@ -56,11 +56,7 @@ public class NotificationConsumers {
             }
             channel.basicAck(tag, false);
             System.out.println("[ms-notify] [CREW] ACK confirmado para tag: " + tag);
-        } catch (IllegalArgumentException e) {
-            System.err.println("[ms-notify] [CREW] Error no recuperable. Enviando a DLQ: " + e.getMessage());
-            channel.basicNack(tag, false, false);
         } catch (Exception e) {
-            System.err.println("[ms-notify] [CREW] Error al procesar ticket. Enviando a DLQ: " + e.getMessage());
             channel.basicNack(tag, false, false);
         }
     }
@@ -77,24 +73,38 @@ public class NotificationConsumers {
 
             channel.basicAck(tag, false);
             System.out.println("[ms-notify] [CERTIFICATE] ACK confirmado para tag: " + tag);
-        } catch (IllegalArgumentException e) {
-            System.err.println("[ms-notify] [CERTIFICATE] Error no recuperable. Enviando a DLQ: " + e.getMessage());
-            channel.basicNack(tag, false, false);
         } catch (Exception e) {
-            System.err.println("[ms-notify] [CERTIFICATE] Error procesando PDF. Enviando a DLQ: " + e.getMessage());
+            System.err.println("[ms-notify] [CERTIFICATE] Error procesando PDF: " + e.getMessage());
             channel.basicNack(tag, false, false);
         }
     }
 
     private void saveNotificationFromMessage(String message) {
         try {
-            JsonNode jsonNode = objectMapper.readTree(message);
-            JsonNode dataNode = jsonNode.has("data") ? jsonNode.get("data") : jsonNode;
+            Long requestId = null;
+            String citizenId = "N/A";
+            String status = "INFO";
+            String taskDetails = message;
 
-            Long requestId = dataNode.has("requestId") ? dataNode.get("requestId").asLong() : null;
-            String citizenId = dataNode.has("citizenId") ? dataNode.get("citizenId").asText() : "N/A";
-            String status = dataNode.has("status") ? dataNode.get("status").asText() : "INFO";
-            String taskDetails = dataNode.has("taskDetails") ? dataNode.get("taskDetails").asText() : message;
+            // Intento 1: Parsear como JSON estándar
+            try {
+                JsonNode jsonNode = objectMapper.readTree(message);
+                JsonNode dataNode = jsonNode.has("data") ? jsonNode.get("data") : jsonNode;
+
+                if (dataNode.has("requestId")) requestId = dataNode.get("requestId").asLong();
+                if (dataNode.has("citizenId")) citizenId = dataNode.get("citizenId").asText();
+                if (dataNode.has("status")) status = dataNode.get("status").asText();
+                if (dataNode.has("taskDetails")) taskDetails = dataNode.get("taskDetails").asText();
+            } catch (Exception jsonEx) {
+                // Intento 2: Parsear mapa de texto Java tipo {key=value, key2=value2}
+                Map<String, String> parsedMap = parseJavaMapString(message);
+                if (parsedMap.containsKey("requestId")) {
+                    try { requestId = Long.parseLong(parsedMap.get("requestId")); } catch (Exception ignored) {}
+                }
+                if (parsedMap.containsKey("citizenId")) citizenId = parsedMap.get("citizenId");
+                if (parsedMap.containsKey("status")) status = parsedMap.get("status");
+                if (parsedMap.containsKey("taskDetails")) taskDetails = parsedMap.get("taskDetails");
+            }
 
             Notification notification = Notification.builder()
                     .requestId(requestId)
@@ -107,44 +117,36 @@ public class NotificationConsumers {
             notificationRepository.save(notification);
             System.out.println("[ms-notify] Notificación guardada exitosamente en BD para RUT: " + citizenId);
         } catch (Exception e) {
-            System.err.println("[ms-notify] Error al mapear/guardar JSON de la notificación: " + e.getMessage());
+            System.err.println("[ms-notify] Error grave al procesar mensaje: " + e.getMessage());
         }
     }
 
-    // =======================================================
-    // CONSUMIDORES DE DEAD LETTER QUEUES (DLQ)
-    // =======================================================
+    private Map<String, String> parseJavaMapString(String input) {
+        Map<String, String> map = new HashMap<>();
+        Pattern pattern = Pattern.compile("([a-zA-Z0-9]+)=([^,}]+)");
+        Matcher matcher = pattern.matcher(input);
+        while (matcher.find()) {
+            map.put(matcher.group(1).trim(), matcher.group(2).trim());
+        }
+        return map;
+    }
 
+    // Consumidores DLQ
     @RabbitListener(queues = "${rabbitmq.queues.email}.dlq")
     public void consumeEmailDlq(String message, Channel channel, @Header(AmqpHeaders.DELIVERY_TAG) long tag) throws IOException {
-        try {
-            System.err.println("[DLQ AUDIT] [EMAIL] Mensaje no entregado procesado desde DLQ: " + message);
-            channel.basicAck(tag, false);
-        } catch (Exception e) {
-            System.err.println("[DLQ ERROR] Error al registrar log de la DLQ Email: " + e.getMessage());
-            channel.basicNack(tag, false, false);
-        }
+        System.err.println("[DLQ AUDIT] [EMAIL] Mensaje en DLQ: " + message);
+        channel.basicAck(tag, false);
     }
 
     @RabbitListener(queues = "${rabbitmq.queues.crew}.dlq")
     public void consumeCrewDlq(String message, Channel channel, @Header(AmqpHeaders.DELIVERY_TAG) long tag) throws IOException {
-        try {
-            System.err.println("[DLQ AUDIT] [CREW] Mensaje no entregado procesado desde DLQ: " + message);
-            channel.basicAck(tag, false);
-        } catch (Exception e) {
-            System.err.println("[DLQ ERROR] Error al registrar log de la DLQ Crew: " + e.getMessage());
-            channel.basicNack(tag, false, false);
-        }
+        System.err.println("[DLQ AUDIT] [CREW] Mensaje en DLQ: " + message);
+        channel.basicAck(tag, false);
     }
 
     @RabbitListener(queues = "${rabbitmq.queues.certificate}.dlq")
     public void consumeCertificateDlq(String message, Channel channel, @Header(AmqpHeaders.DELIVERY_TAG) long tag) throws IOException {
-        try {
-            System.err.println("[DLQ AUDIT] [CERTIFICATE] Mensaje no entregado procesado desde DLQ: " + message);
-            channel.basicAck(tag, false);
-        } catch (Exception e) {
-            System.err.println("[DLQ ERROR] Error al registrar log de la DLQ Certificate: " + e.getMessage());
-            channel.basicNack(tag, false, false);
-        }
+        System.err.println("[DLQ AUDIT] [CERTIFICATE] Mensaje en DLQ: " + message);
+        channel.basicAck(tag, false);
     }
 }
